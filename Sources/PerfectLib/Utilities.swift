@@ -17,7 +17,6 @@
 //===----------------------------------------------------------------------===//
 //
 
-import PerfectNet
 import Foundation
 
 #if os(Linux)
@@ -57,34 +56,22 @@ public struct GenerateFromPointer<T> : IteratorProtocol {
 public struct Encoding {
 
 	/// Return a String given a character generator.
-	public static func encode<D : UnicodeCodec, G : IteratorProtocol where G.Element == D.CodeUnit>(codec inCodec: D, generator: G) -> String {
+	public static func encode<D : UnicodeCodec, G : IteratorProtocol>(codec inCodec: D, generator: G) -> String where G.Element == D.CodeUnit, G.Element == D.CodeUnit {
 		var encodedString = ""
 		var finished: Bool = false
 		var mutableDecoder = inCodec
 		var mutableGenerator = generator
 		repeat {
 			let decodingResult = mutableDecoder.decode(&mutableGenerator)
-			#if swift(>=3.0)
 			switch decodingResult {
 			case .scalarValue(let char):
-				encodedString.append(char)
+				encodedString.append(String(char))
 			case .emptyInput:
 				finished = true
 				/* ignore errors and unexpected values */
 			case .error:
 				finished = true
 			}
-			#else
-			switch decodingResult {
-				case .Result(let char):
-					encodedString.append(char)
-				case .EmptyInput:
-					finished = true
-					/* ignore errors and unexpected values */
-				case .Error:
-					finished = true
-			}
-			#endif
 		} while !finished
 		return encodedString
 	}
@@ -94,13 +81,18 @@ public struct Encoding {
 public struct UTF8Encoding {
 
 	/// Use a character generator to create a String.
-	public static func encode<G : IteratorProtocol where G.Element == UTF8.CodeUnit>(generator gen: G) -> String {
+	public static func encode<G : IteratorProtocol>(generator gen: G) -> String where G.Element == UTF8.CodeUnit {
 		return Encoding.encode(codec: UTF8(), generator: gen)
 	}
 
 	/// Use a character sequence to create a String.
-	public static func encode<S : Sequence where S.Iterator.Element == UTF8.CodeUnit>(bytes byts: S) -> String {
+	public static func encode<S : Sequence>(bytes byts: S) -> String where S.Iterator.Element == UTF8.CodeUnit {
 		return encode(generator: byts.makeIterator())
+	}
+	
+	/// Use a character sequence to create a String.
+	public static func encode(bytes byts: [UTF8.CodeUnit]) -> String {
+		return encode(generator: GenerateFromPointer(from: UnsafeMutablePointer(mutating: byts), count: byts.count))
 	}
 
 	/// Decode a String into an array of UInt8.
@@ -110,7 +102,7 @@ public struct UTF8Encoding {
 }
 
 extension UInt8 {
-	private var shouldURLEncode: Bool {
+	var shouldURLEncode: Bool {
 		let cc = self
 		return ( ( cc >= 128 )
 			|| ( cc < 33 )
@@ -126,9 +118,9 @@ extension UInt8 {
 	var hexString: String {
 		var s = ""
 		let b = self >> 4
-		s.append(UnicodeScalar(b > 9 ? b - 10 + 65 : b + 48))
+		s.append(String(Character(UnicodeScalar(b > 9 ? b - 10 + 65 : b + 48))))
 		let b2 = self & 0x0F
-		s.append(UnicodeScalar(b2 > 9 ? b2 - 10 + 65 : b2 + 48))
+		s.append(String(Character(UnicodeScalar(b2 > 9 ? b2 - 10 + 65 : b2 + 48))))
 		return s
 	}
 }
@@ -155,9 +147,11 @@ extension String {
 			}
 			lastWasCR = false
 			if c < UnicodeScalar(0x0009) {
-				ret.append("&#x");
-				ret.append(UnicodeScalar(0x0030 + UInt32(c)));
-				ret.append(";");
+				if let scale = UnicodeScalar(0x0030 + UInt32(c)) {
+					ret.append("&#x")
+					ret.append(String(Character(scale)))
+					ret.append(";")
+				}
 			} else if c == UnicodeScalar(0x0022) {
 				ret.append("&quot;")
 			} else if c == UnicodeScalar(0x0026) {
@@ -171,7 +165,7 @@ extension String {
 			} else if c > UnicodeScalar(126) {
 				ret.append("&#\(UInt32(c));")
 			} else {
-				ret.append(c)
+				ret.append(String(Character(c)))
 			}
 		}
 		return ret
@@ -183,10 +177,10 @@ extension String {
 		var g = self.utf8.makeIterator()
 		while let c = g.next() {
 			if c.shouldURLEncode {
-				ret.append(UnicodeScalar(37))
+				ret.append(String(Character(UnicodeScalar(37))))
 				ret.append(c.hexString)
 			} else {
-				ret.append(UnicodeScalar(c))
+				ret.append(String(Character(UnicodeScalar(c))))
 			}
 		}
 		return ret
@@ -284,18 +278,18 @@ public struct UUID {
 	let uuid: uuid_t
 
 	public init() {
-		let u = UnsafeMutablePointer<UInt8>.allocate(capacity:  sizeof(uuid_t.self))
+		let u = UnsafeMutablePointer<UInt8>.allocate(capacity:  MemoryLayout<uuid_t>.size)
 		defer {
-			u.deallocate(capacity: sizeof(uuid_t.self))
+			u.deallocate(capacity: MemoryLayout<uuid_t>.size)
 		}
 		uuid_generate_random(u)
 		self.uuid = UUID.uuidFromPointer(u)
 	}
 
 	public init(_ string: String) {
-		let u = UnsafeMutablePointer<UInt8>.allocate(capacity:  sizeof(uuid_t.self))
+		let u = UnsafeMutablePointer<UInt8>.allocate(capacity:  MemoryLayout<uuid_t>.size)
 		defer {
-			u.deallocate(capacity: sizeof(uuid_t.self))
+			u.deallocate(capacity: MemoryLayout<uuid_t>.size)
 		}
 		uuid_parse(string, u)
 		self.uuid = UUID.uuidFromPointer(u)
@@ -311,14 +305,14 @@ public struct UUID {
 	}
 
 	public var string: String {
-		let u = UnsafeMutablePointer<UInt8>.allocate(capacity:  sizeof(uuid_t.self))
+		let u = UnsafeMutablePointer<UInt8>.allocate(capacity:  MemoryLayout<uuid_t>.size)
 		let unu = UnsafeMutablePointer<Int8>.allocate(capacity:  37) // as per spec. 36 + null
 		defer {
-			u.deallocate(capacity: sizeof(uuid_t.self))
+			u.deallocate(capacity: MemoryLayout<uuid_t>.size)
 			unu.deallocate(capacity: 37)
 		}
 		var uu = self.uuid
-		memcpy(u, &uu, sizeof(uuid_t.self))
+		memcpy(u, &uu, MemoryLayout<uuid_t>.size)
 		uuid_unparse_lower(u, unu)
 		return String(validatingUTF8: unu)!
 	}
@@ -438,35 +432,6 @@ extension String {
 }
 
 extension String {
-	var pathComponents: [String] {
-		return URL(fileURLWithPath: self).pathComponents ?? [String]()
-	}
-
-	var lastPathComponent: String {
-		return URL(fileURLWithPath: self).lastPathComponent ?? ""
-	}
-
-	var deletingLastPathComponent: String {
-		let pth = try? URL(fileURLWithPath: self).deletingLastPathComponent()
-		return pth?.path ?? ""
-	}
-
-	var deletingPathExtension: String {
-		let pth = try? URL(fileURLWithPath: self).deletingPathExtension()
-		return pth?.path ?? ""
-	}
-
-	var pathExtension: String {
-		return URL(fileURLWithPath: self).pathExtension ?? ""
-	}
-
-	var resolvingSymlinksInPath: String {
-		let pth = try? URL(fileURLWithPath: self).resolvingSymlinksInPath()
-		return pth?.path ?? ""
-	}
-}
-
-extension String {
 	func begins(with str: String) -> Bool {
 		return self.characters.starts(with: str.characters)
 	}
@@ -502,12 +467,11 @@ public func secondsToICUDate(_ seconds: Int) -> Double {
 
 /// Format a date value according to the indicated format string and return a date string.
 /// - parameter date: The date value
-/// - parameter format: The format by which the date will be formatted
+/// - parameter format: The format by which the date will be formatted. Use a valid strftime style format string.
 /// - parameter timezone: The optional timezone in which the date is expected to be based. Default is the local timezone.
 /// - parameter locale: The optional locale which will be used when parsing the date. Default is the current global locale.
 /// - returns: The resulting date string
-/// - throws: `PerfectError.ICUError`
-/// - Seealso [Date Time Format Syntax](http://userguide.icu-project.org/formatparse/datetime#TOC-Date-Time-Format-Syntax)
+/// - throws: `PerfectError.systemError`
 public func formatDate(_ date: Double, format: String, timezone inTimezone: String? = nil, locale inLocale: String? = nil) throws -> String {
 
 	var t = tm()
@@ -554,44 +518,175 @@ extension UnicodeScalar {
     }
 }
 
-public extension NetNamedPipe {
-    /// Send the existing & opened `File`'s descriptor over the connection to the recipient
-    /// - parameter file: The `File` whose descriptor to send
-    /// - parameter callBack: The callback to call when the send completes. The parameter passed will be `true` if the send completed without error.
-    /// - throws: `PerfectError.NetworkError`
-    public func sendFile(_ file: File, callBack: (Bool) -> ()) throws {
-        try self.sendFd(Int32(file.fd), callBack: callBack)
-    }
+//public extension NetNamedPipe {
+//    /// Send the existing & opened `File`'s descriptor over the connection to the recipient
+//    /// - parameter file: The `File` whose descriptor to send
+//    /// - parameter callBack: The callback to call when the send completes. The parameter passed will be `true` if the send completed without error.
+//    /// - throws: `PerfectError.NetworkError`
+//    public func sendFile(_ file: File, callBack: @escaping (Bool) -> ()) throws {
+//        try self.sendFd(Int32(file.fd), callBack: callBack)
+//    }
+//
+//    /// Receive an existing opened `File` descriptor from the sender
+//    /// - parameter callBack: The callback to call when the receive completes. The parameter passed will be the received `File` object or nil.
+//    /// - throws: `PerfectError.NetworkError`
+//    public func receiveFile(callBack: @escaping (File?) -> ()) throws {
+//        try self.receiveFd {
+//            fd in
+//
+//            if fd == invalidSocket {
+//                callBack(nil)
+//            } else {
+//                callBack(File("", fd: fd))
+//            }
+//        }
+//    }
+//}
+//
+//import OpenSSL
+//
+//extension String.UTF8View {
+//    var sha1: [UInt8] {
+//        let bytes = UnsafeMutablePointer<UInt8>.allocate(capacity:  Int(SHA_DIGEST_LENGTH))
+//        defer { bytes.deallocate(capacity: Int(SHA_DIGEST_LENGTH)) }
+//
+//        SHA1(Array<UInt8>(self), (self.count), bytes)
+//
+//        var r = [UInt8]()
+//        for idx in 0..<Int(SHA_DIGEST_LENGTH) {
+//            r.append(bytes[idx])
+//        }
+//        return r
+//    }
+//}
 
-    /// Receive an existing opened `File` descriptor from the sender
-    /// - parameter callBack: The callback to call when the receive completes. The parameter passed will be the received `File` object or nil.
-    /// - throws: `PerfectError.NetworkError`
-    public func receiveFile(callBack: (File?) -> ()) throws {
-        try self.receiveFd {
-            fd in
 
-            if fd == invalidSocket {
-                callBack(nil)
-            } else {
-                callBack(File("", fd: fd))
-            }
-        }
-    }
-}
-
-import OpenSSL
-
-extension String.UTF8View {
-    var sha1: [UInt8] {
-        let bytes = UnsafeMutablePointer<UInt8>.allocate(capacity:  Int(SHA_DIGEST_LENGTH))
-        defer { bytes.deallocate(capacity: Int(SHA_DIGEST_LENGTH)) }
-
-        SHA1(Array<UInt8>(self), (self.count), bytes)
-
-        var r = [UInt8]()
-        for idx in 0..<Int(SHA_DIGEST_LENGTH) {
-            r.append(bytes[idx])
-        }
-        return r
-    }
+extension String {
+	
+	var filePathSeparator: UnicodeScalar {
+		return UnicodeScalar(47)
+	}
+	
+	var fileExtensionSeparator: UnicodeScalar {
+		return UnicodeScalar(46)
+	}
+	
+	public var beginsWithFilePathSeparator: Bool {
+		let unis = self.characters
+		guard unis.count > 0 else {
+			return false
+		}
+		return unis[unis.startIndex] == Character(filePathSeparator)
+	}
+	
+	public var endsWithFilePathSeparator: Bool {
+		let unis = self.characters
+		guard unis.count > 0 else {
+			return false
+		}
+		return unis[unis.index(before: unis.endIndex)] == Character(filePathSeparator)
+	}
+	
+	private func filePathComponents(addFirstLast addfl: Bool) -> [String] {
+		var r = [String]()
+		let unis = self.characters
+		guard unis.count > 0 else {
+			return r
+		}
+		
+		if addfl && self.beginsWithFilePathSeparator {
+			r.append(String(filePathSeparator))
+		}
+		
+		r.append(contentsOf: self.characters.split(separator: Character(filePathSeparator)).map { String($0) })
+		
+		if addfl && self.endsWithFilePathSeparator {
+			if !self.beginsWithFilePathSeparator || r.count > 1 {
+				r.append(String(filePathSeparator))
+			}
+		}
+		return r
+	}
+	
+	public var filePathComponents: [String] {
+		return self.filePathComponents(addFirstLast: true)
+	}
+	
+	public var lastFilePathComponent: String {
+		let last = self.filePathComponents(addFirstLast: false).last ?? ""
+		if last.isEmpty && self.characters.first == Character(filePathSeparator) {
+			return String(filePathSeparator)
+		}
+		return last
+	}
+	
+	public var deletingLastFilePathComponent: String {
+		var comps = self.filePathComponents(addFirstLast: false)
+		guard comps.count > 1 else {
+			if self.beginsWithFilePathSeparator {
+				return String(filePathSeparator)
+			}
+			return ""
+		}
+		comps.removeLast()
+		let joined = comps.joined(separator: String(filePathSeparator))
+		if self.beginsWithFilePathSeparator {
+			return String(filePathSeparator) + joined
+		}
+		return joined
+	}
+	
+	private func lastPathSeparator(in unis: String.CharacterView) -> String.CharacterView.Index {
+		let startIndex = unis.startIndex
+		var endIndex = unis.endIndex
+		while endIndex != startIndex {
+			if unis[unis.index(before: endIndex)] != Character(filePathSeparator) {
+				break
+			}
+			endIndex = unis.index(before: endIndex)
+		}
+		return endIndex
+	}
+	
+	private func lastExtensionSeparator(in unis: String.CharacterView, endIndex: String.CharacterView.Index) -> String.CharacterView.Index {
+		var endIndex = endIndex
+		while endIndex != startIndex {
+			endIndex = unis.index(before: endIndex)
+			if unis[endIndex] == Character(fileExtensionSeparator) {
+				break
+			}
+		}
+		return endIndex
+	}
+	
+	public var deletingFileExtension: String {
+		let unis = self.characters
+		let startIndex = unis.startIndex
+		var endIndex = lastPathSeparator(in: unis)
+		let noTrailsIndex = endIndex
+		endIndex = lastExtensionSeparator(in: unis, endIndex: endIndex)
+		guard endIndex != startIndex else {
+			if noTrailsIndex == startIndex {
+				return self
+			}
+			return self[startIndex..<noTrailsIndex]
+		}
+		return self[startIndex..<endIndex]
+	}
+	
+	public var filePathExtension: String {
+		let unis = self.characters
+		let startIndex = unis.startIndex
+		var endIndex = lastPathSeparator(in: unis)
+		let noTrailsIndex = endIndex
+		endIndex = lastExtensionSeparator(in: unis, endIndex: endIndex)
+		guard endIndex != startIndex else {
+			return ""
+		}
+		return self[unis.index(after: endIndex)..<noTrailsIndex]
+	}
+	
+	public var resolvingSymlinksInFilePath: String {
+		return File(self).realPath
+	}
 }

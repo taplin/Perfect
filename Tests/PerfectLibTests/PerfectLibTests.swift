@@ -19,8 +19,6 @@
 
 
 import XCTest
-import PerfectNet
-import PerfectThread
 @testable import PerfectLib
 
 #if os(Linux)
@@ -35,58 +33,11 @@ class PerfectLibTests: XCTestCase {
 	#if os(Linux)
 		SwiftGlibc.srand(UInt32(time(nil)))
 	#endif
-		// Put setup code here. This method is called before the invocation of each test method in the class.
-		NetEvent.initialize()
 	}
 
 	override func tearDown() {
 		// Put teardown code here. This method is called after the invocation of each test method in the class.
 		super.tearDown()
-	}
-
-
-
-	func testConcurrentQueue() {
-		let q = Threading.getQueue(name: "concurrent", type: .concurrent)
-
-		var t1 = 0, t2 = 0, t3 = 0
-
-		q.dispatch {
-			t1 = 1
-			Threading.sleep(seconds: 5)
-		}
-		q.dispatch {
-			t2 = 1
-			Threading.sleep(seconds: 5)
-		}
-		q.dispatch {
-			t3 = 1
-			Threading.sleep(seconds: 5)
-		}
-		Threading.sleep(seconds: 1)
-
-		XCTAssert(t1 == 1 && t2 == 1 && t3 == 1)
-	}
-
-	func testSerialQueue() {
-		let q = Threading.getQueue(name: "serial", type: .serial)
-
-		var t1 = 0
-
-		q.dispatch {
-			XCTAssert(t1 == 0)
-			t1 = 1
-		}
-		q.dispatch {
-			XCTAssert(t1 == 1)
-			t1 = 2
-		}
-		q.dispatch {
-			XCTAssert(t1 == 2)
-			t1 = 3
-		}
-		Threading.sleep(seconds: 2)
-		XCTAssert(t1 == 3)
 	}
 
 	func testJSONConvertibleObject1() {
@@ -117,8 +68,6 @@ class PerfectLibTests: XCTestCase {
 			XCTAssert(false, "Exception \(error)")
 		}
 	}
-	
-	
 	
 	func testJSONConvertibleObject2() {
 		
@@ -244,93 +193,93 @@ class PerfectLibTests: XCTestCase {
 
 
 
-	func testNetSendFile() {
-
-		let testFile = File("/tmp/file_to_send.txt")
-		let testContents = "Here are the contents"
-		let sock = "/tmp/foo.sock"
-		let sockFile = File(sock)
-		if sockFile.exists {
-			sockFile.delete()
-		}
-
-		do {
-
-			try testFile.open(.truncate)
-			let _ = try testFile.write(string: testContents)
-			testFile.close()
-			try testFile.open()
-
-			let server = NetNamedPipe()
-			let client = NetNamedPipe()
-
-			try server.bind(address: sock)
-			server.listen()
-
-			let serverExpectation = self.expectation(description: "server")
-			let clientExpectation = self.expectation(description: "client")
-
-			try server.accept(timeoutSeconds: NetEvent.noTimeout) {
-				(inn: NetTCP?) -> () in
-				let n = inn as? NetNamedPipe
-				XCTAssertNotNil(n)
-
-				do {
-					try n?.sendFile(testFile) {
-						(b: Bool) in
-
-						XCTAssertTrue(b)
-
-						n!.close()
-
-						serverExpectation.fulfill()
-					}
-				} catch let e {
-					XCTAssert(false, "Exception accepting connection: \(e)")
-					serverExpectation.fulfill()
-				}
-			}
-
-			try client.connect(address: sock, timeoutSeconds: 5) {
-				(inn: NetTCP?) -> () in
-				let n = inn as? NetNamedPipe
-				XCTAssertNotNil(n)
-				do {
-					try n!.receiveFile {
-						f in
-
-						XCTAssertNotNil(f)
-						do {
-							let testDataRead = try f!.readSomeBytes(count: f!.size)
-							if testDataRead.count > 0 {
-								XCTAssertEqual(UTF8Encoding.encode(bytes: testDataRead), testContents)
-							} else {
-								XCTAssertTrue(false, "Got no data from received file")
-							}
-							f!.close()
-						} catch let e {
-							XCTAssert(false, "Exception in connection: \(e)")
-						}
-						clientExpectation.fulfill()
-					}
-				} catch let e {
-					XCTAssert(false, "Exception in connection: \(e)")
-					clientExpectation.fulfill()
-				}
-			}
-			self.waitForExpectations(timeout: 10000) {
-				_ in
-				server.close()
-				client.close()
-				testFile.close()
-				testFile.delete()
-			}
-		} catch PerfectError.networkError(let code, let msg) {
-			XCTAssert(false, "Exception: \(code) \(msg)")
-		} catch let e {
-			XCTAssert(false, "Exception: \(e)")
-		}
-	}
+//	func testNetSendFile() {
+//
+//		let testFile = File("/tmp/file_to_send.txt")
+//		let testContents = "Here are the contents"
+//		let sock = "/tmp/foo.sock"
+//		let sockFile = File(sock)
+//		if sockFile.exists {
+//			sockFile.delete()
+//		}
+//
+//		do {
+//
+//			try testFile.open(.truncate)
+//			let _ = try testFile.write(string: testContents)
+//			testFile.close()
+//			try testFile.open()
+//
+//			let server = NetNamedPipe()
+//			let client = NetNamedPipe()
+//
+//			try server.bind(address: sock)
+//			server.listen()
+//
+//			let serverExpectation = self.expectation(description: "server")
+//			let clientExpectation = self.expectation(description: "client")
+//
+//			try server.accept(timeoutSeconds: NetEvent.noTimeout) {
+//				(inn: NetTCP?) -> () in
+//				let n = inn as? NetNamedPipe
+//				XCTAssertNotNil(n)
+//
+//				do {
+//					try n?.sendFile(testFile) {
+//						(b: Bool) in
+//
+//						XCTAssertTrue(b)
+//
+//						n!.close()
+//
+//						serverExpectation.fulfill()
+//					}
+//				} catch let e {
+//					XCTAssert(false, "Exception accepting connection: \(e)")
+//					serverExpectation.fulfill()
+//				}
+//			}
+//
+//			try client.connect(address: sock, timeoutSeconds: 5) {
+//				(inn: NetTCP?) -> () in
+//				let n = inn as? NetNamedPipe
+//				XCTAssertNotNil(n)
+//				do {
+//					try n!.receiveFile {
+//						f in
+//
+//						XCTAssertNotNil(f)
+//						do {
+//							let testDataRead = try f!.readSomeBytes(count: f!.size)
+//							if testDataRead.count > 0 {
+//								XCTAssertEqual(UTF8Encoding.encode(bytes: testDataRead), testContents)
+//							} else {
+//								XCTAssertTrue(false, "Got no data from received file")
+//							}
+//							f!.close()
+//						} catch let e {
+//							XCTAssert(false, "Exception in connection: \(e)")
+//						}
+//						clientExpectation.fulfill()
+//					}
+//				} catch let e {
+//					XCTAssert(false, "Exception in connection: \(e)")
+//					clientExpectation.fulfill()
+//				}
+//			}
+//			self.waitForExpectations(timeout: 10000) {
+//				_ in
+//				server.close()
+//				client.close()
+//				testFile.close()
+//				testFile.delete()
+//			}
+//		} catch PerfectError.networkError(let code, let msg) {
+//			XCTAssert(false, "Exception: \(code) \(msg)")
+//		} catch let e {
+//			XCTAssert(false, "Exception: \(e)")
+//		}
+//	}
 
 	func testSysProcess() {
 #if !Xcode  // this always fails in Xcode but passes on the cli and on Linux.
@@ -466,13 +415,13 @@ class PerfectLibTests: XCTestCase {
 
     func testDeletingPathExtension() {
         let path = "/a/b/c.txt"
-        let del = path.deletingPathExtension
+        let del = path.deletingFileExtension
         XCTAssert("/a/b/c" == del)
     }
 
     func testGetPathExtension() {
         let path = "/a/b/c.txt"
-        let ext = path.pathExtension
+        let ext = path.filePathExtension
         XCTAssert("txt" == ext)
     }
 
@@ -487,7 +436,7 @@ class PerfectLibTests: XCTestCase {
 
             while unPath != "/tmp" {
                 try Dir(unPath).delete()
-                unPath = unPath.deletingLastPathComponent
+                unPath = unPath.deletingLastFilePathComponent
             }
         } catch {
             XCTAssert(false, "Error while creating dirs: \(error)")
@@ -591,7 +540,7 @@ class PerfectLibTests: XCTestCase {
 		XCTAssert(i64 == bytes2.export64Bits())
 		XCTAssert(i32 == bytes2.export32Bits())
 		XCTAssert(i16 == bytes2.export16Bits())
-		bytes2.position -= sizeof(UInt16.self)
+		bytes2.position -= MemoryLayout<UInt16>.size
 		XCTAssert(i16 == bytes2.export16Bits())
 		XCTAssert(bytes2.availableExportBytes == 1)
 		XCTAssert(i8 == bytes2.export8Bits())
@@ -601,13 +550,10 @@ class PerfectLibTests: XCTestCase {
 extension PerfectLibTests {
     static var allTests : [(String, (PerfectLibTests) -> () throws -> Void)] {
         return [
-            ("testConcurrentQueue", testConcurrentQueue),
-            ("testSerialQueue", testSerialQueue),
             ("testJSONConvertibleObject1", testJSONConvertibleObject1),
             ("testJSONConvertibleObject2", testJSONConvertibleObject2),
             ("testJSONEncodeDecode", testJSONEncodeDecode),
             ("testJSONDecodeUnicode", testJSONDecodeUnicode),
-            ("testNetSendFile", testNetSendFile),
             ("testSysProcess", testSysProcess),
             ("testStringByEncodingHTML", testStringByEncodingHTML),
             ("testStringByEncodingURL", testStringByEncodingURL),

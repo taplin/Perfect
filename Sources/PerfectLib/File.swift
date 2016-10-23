@@ -58,7 +58,8 @@ let fileCopyBufferSize = 16384
 /// Provides access to a file on the local file system
 public class File {
 
-	var fd = -1
+	/// The underlying file system descriptor.
+	public var fd = -1
 	var internalPath = ""
 
     /// Checks that the file exists on the file system
@@ -82,7 +83,7 @@ public class File {
             return internalPath
         }
         var ary = [UInt8](repeating: 0, count: maxPath)
-        let buffer = UnsafeMutablePointer<Int8>(ary)
+		let buffer = UnsafeMutableRawPointer(mutating: ary).assumingMemoryBound(to: Int8.self)
         let res = readlink(internalPath, buffer, maxPath)
         guard res != -1 else {
             return internalPath
@@ -93,7 +94,7 @@ public class File {
         guard lastChar != "/" && lastChar != "." else {
             return trailPath
         }
-        return internalPath.deletingLastPathComponent + "/" + trailPath
+        return internalPath.deletingLastFilePathComponent + "/" + trailPath
     }
 
     /// Returns the modification date for the file in the standard UNIX format of seconds since 1970/01/01 00:00:00 GMT
@@ -174,8 +175,11 @@ public extension File {
     }
 	/// A file or directory access permission value.
 	public struct PermissionMode: OptionSet {
+		/// File system mode type.
 		public typealias Mode = mode_t
+		/// The raw mode.
 		public let rawValue: Mode
+		/// Create a permission mode with a raw value.
 		public init(rawValue: Mode) {
 			self.rawValue = rawValue
 		}
@@ -404,7 +408,7 @@ public extension File {
 
 		let bSize = min(count, sizeOr(count))
 		var ary = [UInt8](repeating: 0, count: bSize)
-		let ptr = UnsafeMutablePointer<UInt8>(ary)
+		let ptr = UnsafeMutableRawPointer(mutating: ary).assumingMemoryBound(to: Int8.self)
 
 		let readCount = read(CInt(fd), ptr, bSize)
 		guard readCount >= 0 else {
@@ -442,7 +446,7 @@ public extension File {
     @discardableResult
 	public func write(bytes: [UInt8], dataPosition: Int = 0, length: Int = Int.max) throws -> Int {
         let len = min(bytes.count - dataPosition, length)
-		let ptr = UnsafeMutablePointer<UInt8>(bytes).advanced(by: dataPosition)
+		let ptr = UnsafeMutableRawPointer(mutating: bytes).assumingMemoryBound(to: UInt8.self).advanced(by: dataPosition)
     #if os(Linux)
 		let wrote = SwiftGlibc.write(Int32(fd), ptr, len)
 	#else

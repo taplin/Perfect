@@ -28,7 +28,7 @@ import Darwin
 /// This class represents a directory on the file system.
 /// It can be used for creating & inspecting directories and enumerating directory contents.
 public struct Dir {
-
+	/// A typealias for directory permission modes.
 	public typealias PermissionMode = File.PermissionMode
 
 	var internalPath = ""
@@ -44,6 +44,7 @@ public struct Dir {
 		return exists(realPath)
 	}
 
+	/// Set this Dir as the process' working directory.
 	public func setAsWorkingDir() throws {
 		let res = chdir(self.internalPath)
 		guard res == 0 else {
@@ -51,10 +52,11 @@ public struct Dir {
 		}
 	}
 
+	/// Return the process' current working directory.
 	public static var workingDir: Dir {
 		let buffer = Array(repeating: 0 as UInt8, count: 2049)
-		let _ = getcwd(UnsafeMutablePointer<Int8>(buffer), 2048)
-		let path = String(validatingUTF8: UnsafeMutablePointer<Int8>(buffer)) ?? "."
+		let _ = getcwd(UnsafeMutableRawPointer(mutating: buffer).assumingMemoryBound(to: Int8.self), 2048)
+		let path = String(validatingUTF8: UnsafeMutableRawPointer(mutating: buffer).assumingMemoryBound(to: Int8.self)) ?? "."
 		return Dir(path)
 	}
 
@@ -68,7 +70,7 @@ public struct Dir {
 	public func create(perms: PermissionMode = [.rwxUser, .rxGroup, .rxOther]) throws {
 		let pth = realPath
 		var currPath = pth.begins(with: "/") ? "/" : ""
-		for component in pth.pathComponents where component != "/" {
+		for component in pth.filePathComponents where component != "/" {
             currPath += component
             defer {
                 currPath += "/"
@@ -94,7 +96,7 @@ public struct Dir {
 
 	/// Returns the name of the directory.
 	public var name: String {
-		return internalPath.lastPathComponent
+		return internalPath.lastFilePathComponent
 	}
 
 	/// Returns a Dir object representing the current Dir's parent. Returns nil if there is no parent.
@@ -102,7 +104,7 @@ public struct Dir {
 		guard internalPath != "/" else {
 			return nil // can not go up
 		}
-		return Dir(internalPath.deletingLastPathComponent)
+		return Dir(internalPath.deletingLastFilePathComponent)
 	}
 
 	/// Returns the path to the current directory.
@@ -121,7 +123,7 @@ public struct Dir {
 	}
 
 	var realPath: String {
-		return internalPath.resolvingSymlinksInPath
+		return internalPath.resolvingSymlinksInFilePath
 	}
 
 #if os(Linux)
@@ -137,7 +139,7 @@ public struct Dir {
 	/// Enumerates the contents of the directory passing the name of each contained element to the provided callback.
 	/// - parameter closure: The callback which will receive each entry's name
 	/// - throws: `PerfectError.FileError`
-	public func forEachEntry(closure: (name: String) throws -> ()) throws {
+	public func forEachEntry(closure: (String) throws -> ()) throws {
 		guard let dir = opendir(realPath) else {
 			try ThrowFileError()
 		}
@@ -172,9 +174,9 @@ public struct Dir {
 			nameBuf.append(0)
 			if let name = String(validatingUTF8: nameBuf), !(name == "." || name == "..") {
                 if Int32(type) == Int32(DT_DIR) {
-                    try closure(name: name + "/")
+                    try closure(name + "/")
                 } else {
-                    try closure(name: name)
+                    try closure(name)
                 }
 			}
 		}
